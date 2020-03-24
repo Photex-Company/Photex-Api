@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -19,7 +18,6 @@ using Microsoft.OpenApi.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
-using Photex.Core.Contracts;
 using Photex.Core.Contracts.Settings;
 using Photex.Core.Interfaces;
 using Photex.Core.Services;
@@ -45,17 +43,8 @@ namespace Phtotex.Api
             services.AddScoped<IAccountService, AccountService>();
             services.AddScoped<IImageService, ImageService>();
 
-            /*
             services.AddDbContextPool<PhotexDbContext>(options =>
-                options.UseSqlServer(Configuration.GetConnectionString("database")));
-            */
-
-            services.AddDbContextPool<PhotexDbContext>(options =>
-            {
-                options.UseInMemoryDatabase(Guid.NewGuid().ToString());
-                options.ConfigureWarnings(builder =>
-                    builder.Ignore(InMemoryEventId.TransactionIgnoredWarning));
-            });
+                options.UseSqlServer(Configuration.GetConnectionString("Database")));
 
             services.AddScoped<CookieAuthorizationMiddleware>();
 
@@ -104,17 +93,16 @@ namespace Phtotex.Api
 
             services.AddMvc()
                 .SetCompatibilityVersion(CompatibilityVersion.Version_2_2)
-                 .AddFluentValidation(config => config.RegisterValidatorsFromAssemblyContaining<Startup>())
-                   .AddJsonOptions(setup =>
-                   {
-                       setup.AllowInputFormatterExceptionMessages = true;
-                       setup.SerializerSettings.DateFormatString = "yyyy-MM-dd";
-                       setup.SerializerSettings.DateTimeZoneHandling = DateTimeZoneHandling.Utc;
-                       setup.SerializerSettings.Formatting = Formatting.Indented;
-                       setup.SerializerSettings.NullValueHandling = NullValueHandling.Ignore;
-                       setup.SerializerSettings.Converters.Add(new StringEnumConverter());
-                       setup.SerializerSettings.ContractResolver = new DefaultContractResolver();
-                   });
+                .AddFluentValidation(config => config.RegisterValidatorsFromAssemblyContaining<Startup>())
+                .AddJsonOptions(setup =>
+                {
+                    setup.AllowInputFormatterExceptionMessages = true;
+                    setup.SerializerSettings.DateTimeZoneHandling = DateTimeZoneHandling.Utc;
+                    setup.SerializerSettings.Formatting = Formatting.Indented;
+                    setup.SerializerSettings.NullValueHandling = NullValueHandling.Ignore;
+                    setup.SerializerSettings.Converters.Add(new StringEnumConverter());
+                    setup.SerializerSettings.ContractResolver = new DefaultContractResolver();
+                });
 
 #if !DEBUG
             services.AddApplicationInsightsTelemetry(Configuration["APPINSIGHTS_INSTRUMENTATIONKEY"]);

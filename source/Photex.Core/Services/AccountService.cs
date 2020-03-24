@@ -63,7 +63,7 @@ namespace Photex.Core.Services
             var result = await _userManager.CreateAsync(user, request.Password);
             if (!result.Succeeded)
             {
-                throw new ArgumentException($"Wrong parameters. Reason: {result.Errors.Select(error => $"{error.Code}: {error.Description}")}");
+                throw new ArgumentException($"Wrong parameters. Reason: {string.Join(". ", result.Errors.Select(error => $"{error.Code}: {error.Description}"))}");
             }
 
             return new UserModel

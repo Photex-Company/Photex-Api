@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Photex.Core.Contracts.Requests;
+using Photex.Core.Exceptions;
 using Photex.Core.Interfaces;
 using Phtotex.Api.Extensions;
 
@@ -62,11 +63,21 @@ namespace Phtotex.Api.Controllers
         public async Task<IActionResult> UploadImage(
             [FromForm] UploadImageRequest request)
         {
-            await _imageService.UploadImageFromStream(
-                HttpContext.GetUserId().Value,
-                request.Catalogue,
-                request.Description,
-                request.Image.OpenReadStream());
+            try
+            {
+                await _imageService.UploadImageFromStream(
+                    HttpContext.GetUserId().Value,
+                    request.Catalogue,
+                    request.Description,
+                    request.Image.OpenReadStream());
+            }
+            catch (WrongImageFormatException ex)
+            {
+                return BadRequest(new
+                {
+                    message = ex.Message
+                });
+            }
 
             return NoContent();
         }
