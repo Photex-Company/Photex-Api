@@ -81,5 +81,31 @@ namespace Phtotex.Api.Controllers
 
             return NoContent();
         }
+
+        [HttpPut("{imageId}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateImage(
+            [FromBody] UpdateImageRequest request,
+            [FromRoute] long imageId)
+        {
+            await _imageService.UpdateImage(
+                HttpContext.GetUserId().Value,
+                imageId,
+                request);
+
+            return NoContent();
+        }
+
+        [HttpDelete("{imageId}")]
+        [Authorize]
+        public async Task<IActionResult> RemoveImage(
+            [FromRoute] long imageId)
+        {
+            await _imageService.DeleteImage(
+                HttpContext.GetUserId().Value,
+                imageId);
+
+            return NoContent();
+        }
     }
 }

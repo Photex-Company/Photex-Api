@@ -7,6 +7,7 @@ using Azure.Storage.Blobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Photex.Core.Contracts.Models;
+using Photex.Core.Contracts.Requests;
 using Photex.Core.Contracts.Settings;
 using Photex.Core.Exceptions;
 using Photex.Core.Interfaces;
@@ -30,6 +31,19 @@ namespace Photex.Core.Services
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _container = new BlobServiceClient(options.Value.Connection)
                 .GetBlobContainerClient(options.Value.Name);
+        }
+
+        public async Task DeleteImage(long userId, long imageId)
+        {
+            var image = await _context.Images
+                .Where(x => x.Id == imageId && x.Catalogue.UserId == userId)
+                .FirstOrDefaultAsync();
+
+            if (image != null)
+            {
+                _context.Remove(image);
+                await _context.SaveChangesAsync();
+            }
         }
 
         public async Task<CatalogueModel> GetCatalogue(long userId, string name)
@@ -59,22 +73,70 @@ namespace Photex.Core.Services
             return catalogues.Select(MapToCatalogueModel);
         }
 
+        public async Task UpdateImage(long userId, long imageId, UpdateImageRequest request)
+        {
+            var image = await _context.Images
+                .Include(x => x.Catalogue)
+                .Where(x => x.Id == imageId && x.Catalogue.UserId == userId)
+                .FirstOrDefaultAsync();
+
+            if (image != null)
+            {
+                if (request.DescriptionSpecified)
+                {
+                    image.Description = request.Description;
+                }
+
+                if (request.CatalogueSpecified)
+                {
+                    var existingCatalogue = image.Catalogue;
+                    if (!existingCatalogue.Name.Equals(request.Catalogue))
+                    {
+                        var catalogue = await _context.Catalogues
+                            .Include(x => x.Images)
+                            .FirstOrDefaultAsync(x =>
+                                x.Name.Equals(request.Catalogue, StringComparison.OrdinalIgnoreCase) &&
+                                x.UserId == userId);
+
+                        if (catalogue == null)
+                        {
+                            catalogue = new Catalogue
+                            {
+                                Name = request.Catalogue,
+                                Images = new List<Image>(),
+                                UserId = userId
+                            };
+
+                            await _context.Catalogues.AddAsync(catalogue);
+                        }
+
+                        catalogue.Images.Add(image);
+                        existingCatalogue.Images.Remove(image);
+                        await _context.SaveChangesAsync();
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+            }
+        }
+
         public async Task UploadImageFromStream(long userId, string catalogueName, string description, Stream imageStream)
         {
             var path = $"{userId}/{Guid.NewGuid().ToString()}.jpg";
             EnsureIsJpg(imageStream);
 
             var blobInfo = await _container.UploadBlobAsync(path, imageStream);
-            var catalogue = await _context.Catalogues
+            using (var transaction = await _context.Database.BeginTransactionAsync())
+            {
+                var catalogue = await _context.Catalogues
                 .Include(x => x.Images)
                 .FirstOrDefaultAsync(x =>
                     x.Name.Equals(catalogueName, StringComparison.OrdinalIgnoreCase) &&
                     x.UserId == userId);
 
-            if (catalogue == null)
-            {
-                using (var transaction = await _context.Database.BeginTransactionAsync())
+                if (catalogue == null)
                 {
+
                     catalogue = new Catalogue
                     {
                         Name = catalogueName,
@@ -83,20 +145,19 @@ namespace Photex.Core.Services
                     };
 
                     await _context.Catalogues.AddAsync(catalogue);
-                    await _context.SaveChangesAsync();
-                    transaction.Commit();
                 }
+
+                catalogue.Images.Add(new Image
+                {
+                    DateCreated = DateTime.UtcNow,
+                    DateModified = DateTime.UtcNow,
+                    Description = description,
+                    Url = $"{_baseUrl}/{path}"
+                });
+
+                await _context.SaveChangesAsync();
+                transaction.Commit();
             }
-
-            catalogue.Images.Add(new Image
-            {
-                DateCreated = DateTime.UtcNow,
-                DateModified = DateTime.UtcNow,
-                Description = description,
-                Url = $"{_baseUrl}/{path}"
-            });
-
-            await _context.SaveChangesAsync();
         }
 
         private void EnsureIsJpg(Stream imageStream)

@@ -12,5 +12,7 @@ namespace Photex.Core.Interfaces
         Task<IEnumerable<CatalogueModel>> GetImages(long userId);
         Task<IEnumerable<string>> GetCatalogues(long userId);
         Task UploadImageFromStream(long userId, string catalogue, string description, Stream imageStream);
+        Task DeleteImage(long userId, long imageId);
+        Task UpdateImage(long userId, long imageId, UpdateImageRequest request);
     }
 }
