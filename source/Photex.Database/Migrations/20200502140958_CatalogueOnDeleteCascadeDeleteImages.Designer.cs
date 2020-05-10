@@ -3,15 +3,17 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Photex.Database;
 
 namespace Photex.Database.Migrations
 {
     [DbContext(typeof(PhotexDbContext))]
-    partial class PhotexDbContextModelSnapshot : ModelSnapshot
+    [Migration("20200502140958_CatalogueOnDeleteCascadeDeleteImages")]
+    partial class CatalogueOnDeleteCascadeDeleteImages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

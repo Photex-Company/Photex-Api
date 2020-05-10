@@ -3,6 +3,6 @@
     public class CatalogueModel
     {
         public string Name { get; set; }
-        public ImageModel[] Images { get; set; }
+        public ImageInCatalogueModel[] Images { get; set; }
     }
 }

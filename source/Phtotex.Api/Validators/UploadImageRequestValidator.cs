@@ -11,9 +11,8 @@ namespace Phtotex.Api.Validators
     {
         public UploadImageRequestValidator()
         {
-            RuleFor(x => x.Catalogue)
-                .NotNull()
-                .NotEmpty();
+            RuleFor(x => x.CatalogueId)
+                .GreaterThan(0);
 
             RuleFor(x => x.Image)
                 .NotNull()

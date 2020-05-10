@@ -1,19 +1,20 @@
-﻿using System;
+﻿using System.Collections.Generic;
 using System.Net.Mime;
+using System.Text;
 using System.Threading.Tasks;
 using FluentValidation.AspNetCore;
 using GlobalExceptionHandler.WebApi;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -42,11 +43,12 @@ namespace Phtotex.Api
             services.Configure<ImageContainerSettings>(Configuration.GetSection(nameof(ImageContainerSettings)));
             services.AddScoped<IAccountService, AccountService>();
             services.AddScoped<IImageService, ImageService>();
+            services.AddScoped<ICatalogueService, CatalogueService>();
 
             services.AddDbContextPool<PhotexDbContext>(options =>
                 options.UseSqlServer(Configuration.GetConnectionString("Database")));
 
-            services.AddScoped<CookieAuthorizationMiddleware>();
+            services.AddScoped<JwtAuthorizationMiddleware>();
 
             services.AddIdentity<ApplicationUser, IdentityRole<long>>(options =>
             {
@@ -59,34 +61,29 @@ namespace Phtotex.Api
             services
                 .AddAuthentication(options =>
                 {
-                    options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                    options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                    options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                    options.DefaultSignInScheme = JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
                 })
-                 .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
+                 .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
                  {
-                     options.Cookie.Name = "PhotexAuhtentication";
-                     options.Cookie.Expiration = TimeSpan.FromDays(1);
+                     options.TokenValidationParameters = new TokenValidationParameters
+                     {
+                         ValidateIssuer = true,
+                         ValidateAudience = true,
+                         ValidateLifetime = true,
+                         ValidateIssuerSigningKey = true,
+                         ValidIssuer = "IssuerPhotex",
+                         ValidAudience = "IssuerPhotex",
+                         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("KeyPhotexKeyPhotexKeyPhotexKeyPhotexKeyPhotexKeyPhotex"))
+                     };
                  });
-
-            services.Configure<CookiePolicyOptions>(options =>
-            {
-                options.CheckConsentNeeded = context => true;
-                options.MinimumSameSitePolicy = SameSiteMode.None;
-            });
-
-            services.ConfigureApplicationCookie(options =>
-            {
-                options.Cookie.HttpOnly = true;
-                options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
-                options.SlidingExpiration = true;
-            });
 
             services.AddAuthorization(options =>
             {
                 var defaultAuthorizationPolicyBuilder = new AuthorizationPolicyBuilder(
-                    CookieAuthenticationDefaults.AuthenticationScheme);
+                    JwtBearerDefaults.AuthenticationScheme);
                 defaultAuthorizationPolicyBuilder = defaultAuthorizationPolicyBuilder.RequireAuthenticatedUser();
                 options.DefaultPolicy = defaultAuthorizationPolicyBuilder.Build();
             });
@@ -110,6 +107,32 @@ namespace Phtotex.Api
             services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "Photex API definition", Version = "v1" });
+
+                c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Name = "Bearer",
+                    BearerFormat = "JWT",
+                    Scheme = "bearer",
+                    Description = "Specify the authorization token.",
+                    In = ParameterLocation.Header,
+                    Type = SecuritySchemeType.Http
+                });
+
+                c.AddSecurityRequirement(new OpenApiSecurityRequirement
+                {
+                    {
+                          new OpenApiSecurityScheme
+                            {
+                                Reference = new OpenApiReference
+                                {
+                                    Type = ReferenceType.SecurityScheme,
+                                    Id = "Bearer"
+                                }
+                            },
+                            new string[] {}
+
+                    }
+                });
             });
         }
 
@@ -134,14 +157,13 @@ namespace Phtotex.Api
             });
 
             app.UseCors(builder => builder
-             .AllowAnyOrigin()
+             .WithOrigins("https://photex-company.github.io", "http://localhost:4200")
              .AllowAnyMethod()
              .AllowAnyHeader()
              .AllowCredentials());
 
             app.UseHttpsRedirection();
-            app.UseCookiePolicy();
-            app.UseMiddleware<CookieAuthorizationMiddleware>();
+            app.UseMiddleware<JwtAuthorizationMiddleware>();
             app.UseAuthentication();
 
             app.UseGlobalExceptionHandler(opt =>

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Photex.Core.Contracts;
 using Photex.Core.Contracts.Models;
@@ -33,7 +34,7 @@ namespace Photex.Core.Services
                     await _userManager.ResetAccessFailedCountAsync(user);
                     var claims = await _userManager.GetClaimsAsync(user);
                     claims.Add(new Claim("UserId", user.Id.ToString()));
-                    return new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                    return new ClaimsIdentity(claims, JwtBearerDefaults.AuthenticationScheme);
                 }
 
                 await _userManager.AccessFailedAsync(user);

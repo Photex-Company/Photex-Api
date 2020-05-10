@@ -4,12 +4,15 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Azure.Storage.Blobs;
+using ExifLibrary;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Photex.Core.Contracts.Metadata;
 using Photex.Core.Contracts.Models;
 using Photex.Core.Contracts.Requests;
 using Photex.Core.Contracts.Settings;
 using Photex.Core.Exceptions;
+using Photex.Core.Extensions;
 using Photex.Core.Interfaces;
 using Photex.Database;
 using Photex.Database.Entities;
@@ -45,23 +48,6 @@ namespace Photex.Core.Services
                 await _context.SaveChangesAsync();
             }
         }
-
-        public async Task<CatalogueModel> GetCatalogue(long userId, string name)
-        {
-            var catalogue = await _context.Catalogues
-                .Include(x => x.Images)
-                .FirstOrDefaultAsync(x => x.UserId == userId && x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-
-            if (catalogue == null)
-            {
-                return null;
-            }
-
-            return MapToCatalogueModel(catalogue);
-        }
-
-        public async Task<IEnumerable<string>> GetCatalogues(long userId)
-            => await _context.Catalogues.Where(x => x.UserId == userId).Select(x => x.Name).ToListAsync();
 
         public async Task<IEnumerable<CatalogueModel>> GetImages(long userId)
         {
@@ -116,48 +102,46 @@ namespace Photex.Core.Services
                     }
                 }
 
+                image.DateModified = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
         }
 
-        public async Task UploadImageFromStream(long userId, string catalogueName, string description, Stream imageStream)
+        public async Task UploadImageFromStream(long userId, long catalogueId, string description, Stream imageStream)
         {
-            var path = $"{userId}/{Guid.NewGuid().ToString()}.jpg";
             EnsureIsJpg(imageStream);
-
-            var blobInfo = await _container.UploadBlobAsync(path, imageStream);
-            using (var transaction = await _context.Database.BeginTransactionAsync())
-            {
-                var catalogue = await _context.Catalogues
+            var catalogue = await _context.Catalogues
                 .Include(x => x.Images)
                 .FirstOrDefaultAsync(x =>
-                    x.Name.Equals(catalogueName, StringComparison.OrdinalIgnoreCase) &&
-                    x.UserId == userId);
+                    x.Id == catalogueId &&
+                    x.UserId == userId)
+                    ?? throw new ArgumentException("Catalogue not found");
 
-                if (catalogue == null)
-                {
+            var path = $"{userId}/{Guid.NewGuid().ToString()}.jpg";
+            var blobInfo = await _container.UploadBlobAsync(path, imageStream);
+            catalogue.Images.Add(new Image
+            {
+                DateCreated = DateTime.UtcNow,
+                DateModified = DateTime.UtcNow,
+                Description = description,
+                Url = $"{_baseUrl}/{path}"
+            });
 
-                    catalogue = new Catalogue
-                    {
-                        Name = catalogueName,
-                        Images = new List<Image>(),
-                        UserId = userId
-                    };
+            await _context.SaveChangesAsync();
+        }
 
-                    await _context.Catalogues.AddAsync(catalogue);
-                }
+        public async Task<CatalogueModel> GetImagesFromCatalogue(long userId, long catalogueId)
+        {
+            var catalogue = await _context.Catalogues
+                .Include(x => x.Images)
+                .FirstOrDefaultAsync(x => x.UserId == userId & x.Id == catalogueId);
 
-                catalogue.Images.Add(new Image
-                {
-                    DateCreated = DateTime.UtcNow,
-                    DateModified = DateTime.UtcNow,
-                    Description = description,
-                    Url = $"{_baseUrl}/{path}"
-                });
-
-                await _context.SaveChangesAsync();
-                transaction.Commit();
+            if (catalogue == null)
+            {
+                return null;
             }
+
+            return MapToCatalogueModel(catalogue);
         }
 
         private void EnsureIsJpg(Stream imageStream)
@@ -181,17 +165,103 @@ namespace Photex.Core.Services
         }
 
         private CatalogueModel MapToCatalogueModel(Catalogue catalogue)
-            => new CatalogueModel
+        {
+            var images = new List<ImageInCatalogueModel>();
+            foreach (var image in catalogue.Images ?? Enumerable.Empty<Image>())
             {
-                Name = catalogue.Name,
-                Images = catalogue.Images?.Select(image => new ImageModel
+                images.Add(new ImageInCatalogueModel
                 {
                     DateCreated = image.DateCreated,
                     DateModified = image.DateModified,
                     Description = image.Description,
                     Id = image.Id,
                     Url = image.Url
-                }).ToArray()
+                });
+            }
+
+            return new CatalogueModel
+            {
+                Name = catalogue.Name,
+                Images = images.ToArray()
             };
+        }
+
+        private async Task<IEnumerable<MetadataExtractor.Directory>> GetImageMetadata(Image image)
+        {
+            using (var ms = new MemoryStream())
+            {
+                await _container.GetBlobClient(
+                    image.Url.Remove(0, _baseUrl.Length + 1)).DownloadToAsync(ms);
+
+                ms.Seek(0, SeekOrigin.Begin);
+                return MetadataExtractor.ImageMetadataReader.ReadMetadata(ms);
+            }
+        }
+
+        public async Task<ImageModel> GetImageFromUser(long userId, long imageId)
+        {
+            var image = await _context.Images.FirstOrDefaultAsync(x => x.Id == imageId && x.Catalogue.UserId == userId);
+            if (image == null)
+            {
+                return null;
+            }
+
+            var metadata = await GetImageMetadata(image);
+
+            return new ImageModel
+            {
+                DateCreated = image.DateCreated,
+                DateModified = image.DateModified,
+                Description = image.Description,
+                Id = image.Id,
+                Url = image.Url,
+                Metadata = metadata.SafeToDictionary(
+                    d => d.Name,
+                    d => d.Tags.SafeToDictionary(
+                        t => t.Name,
+                        t => t.Description,
+                        (current, updated) => current + '|' + updated),
+                    (current, updated) => current.SafeConcatDictionaries(
+                            updated,
+                            (c, u) => c + " | " + u))
+            };
+        }
+
+        public async Task UpdateMetadata(long userId, long imageId, UpdateMetadataRequest request)
+        {
+            var image = await _context.Images.FirstOrDefaultAsync(x => x.Id == imageId && x.Catalogue.UserId == userId);
+            if (image == null)
+            {
+                return;
+            }
+
+            ImageFile realImage;
+            using (var ms = new MemoryStream())
+            {
+                await _container.GetBlobClient(
+                        image.Url.Remove(0, _baseUrl.Length + 1))
+                    .DownloadToAsync(ms);
+
+                ms.Seek(0, SeekOrigin.Begin);
+                realImage = await ImageFile.FromStreamAsync(ms);
+            }
+
+            foreach (var value in request.NewMetadata)
+            {
+                realImage.Properties.Set(MetadataInfo.MetadataTags[value.Name], value.NewValue);
+            }
+
+            using (var ms = new MemoryStream())
+            {
+                await realImage.SaveAsync(ms);
+                ms.Seek(0, SeekOrigin.Begin);
+                await _container.GetBlobClient(
+                        image.Url.Remove(0, _baseUrl.Length + 1))
+                    .UploadAsync(ms, overwrite: true);
+            }
+
+            image.DateModified = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
     }
 }

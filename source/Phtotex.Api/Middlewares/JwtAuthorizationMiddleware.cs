@@ -1,22 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 
 namespace Phtotex.Api.Middlewares
 {
-    public class CookieAuthorizationMiddleware : IMiddleware
+    public class JwtAuthorizationMiddleware : IMiddleware
     {
         public async Task InvokeAsync(HttpContext context, RequestDelegate next)
         {
             var principal = new ClaimsPrincipal();
 
             var result = await context.AuthenticateAsync(
-                CookieAuthenticationDefaults.AuthenticationScheme);
+                JwtBearerDefaults.AuthenticationScheme);
 
             if (result?.Principal != null)
             {

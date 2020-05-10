@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Photex.Core.Contracts.Metadata;
 using Photex.Core.Contracts.Requests;
 using Photex.Core.Exceptions;
 using Photex.Core.Interfaces;
@@ -22,6 +24,20 @@ namespace Phtotex.Api.Controllers
             _imageService = imageService ?? throw new ArgumentNullException(nameof(imageService));
         }
 
+        [HttpGet("metadata/editable")]
+        public IActionResult GetEditableMetadata()
+        {
+            return Ok(
+                Enum.GetValues(typeof(MetadataInfo.MetadataName))
+                .OfType<MetadataInfo.MetadataName>()
+                .Select(name => new
+                {
+                    Name = name,
+                    Description = MetadataInfo.MetadataDescriptions[name],
+                    Value = MetadataInfo.MetadataValues[name]
+                }));
+        }
+
         [HttpGet]
         [Authorize]
         public async Task<IActionResult> GetImages()
@@ -34,24 +50,14 @@ namespace Phtotex.Api.Controllers
                 : Ok(response);
         }
 
-        [HttpGet("{catalogue}")]
+        [HttpGet("{imageId}")]
         [Authorize]
-        public async Task<IActionResult> GetImagesFromCatalogue([FromRoute] string catalogue)
+        public async Task<IActionResult> GetImages(
+            [FromRoute] long imageId)
         {
-            var response = await _imageService.GetCatalogue(
-                HttpContext.GetUserId().Value, catalogue);
-
-            return response == null
-                ? (IActionResult)NotFound()
-                : Ok(response);
-        }
-
-        [HttpGet("catalogues")]
-        [Authorize]
-        public async Task<IActionResult> GetCatalogues()
-        {
-            var response = await _imageService.GetCatalogues(
-                HttpContext.GetUserId().Value);
+            var response = await _imageService.GetImageFromUser(
+                HttpContext.GetUserId().Value,
+                imageId);
 
             return response == null
                 ? (IActionResult)NotFound()
@@ -67,7 +73,7 @@ namespace Phtotex.Api.Controllers
             {
                 await _imageService.UploadImageFromStream(
                     HttpContext.GetUserId().Value,
-                    request.Catalogue,
+                    request.CatalogueId,
                     request.Description,
                     request.Image.OpenReadStream());
             }
@@ -89,6 +95,20 @@ namespace Phtotex.Api.Controllers
             [FromRoute] long imageId)
         {
             await _imageService.UpdateImage(
+                HttpContext.GetUserId().Value,
+                imageId,
+                request);
+
+            return NoContent();
+        }
+
+        [HttpPatch("{imageId}/metadata")]
+        [Authorize]
+        public async Task<IActionResult> UpdateMetadata(
+            [FromBody] UpdateMetadataRequest request,
+            [FromRoute] long imageId)
+        {
+            await _imageService.UpdateMetadata(
                 HttpContext.GetUserId().Value,
                 imageId,
                 request);

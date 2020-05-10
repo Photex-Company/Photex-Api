@@ -31,7 +31,8 @@ namespace Photex.Database
 
             modelBuilder.Entity<Catalogue>()
                 .HasMany(x => x.Images)
-                .WithOne(x => x.Catalogue);
+                .WithOne(x => x.Catalogue)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Image>()
                 .Property(x => x.Description)

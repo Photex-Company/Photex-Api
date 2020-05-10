@@ -1,11 +1,10 @@
 ﻿using System;
-using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
+using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Photex.Core.Contracts;
+using Microsoft.IdentityModel.Tokens;
 using Photex.Core.Contracts.Requests;
 using Photex.Core.Interfaces;
 using Phtotex.Api.Extensions;
@@ -49,11 +48,20 @@ namespace Phtotex.Api.Controllers
             var claimsIdentity = await _accountService.Authenticate(request);
             if (claimsIdentity != null)
             {
-                await HttpContext.SignInAsync(
-                    CookieAuthenticationDefaults.AuthenticationScheme,
-                    new ClaimsPrincipal(claimsIdentity));
+                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("KeyPhotexKeyPhotexKeyPhotexKeyPhotexKeyPhotexKeyPhotex"));
+                var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+                var token = new JwtSecurityToken(
+                                            issuer: "IssuerPhotex",
+                                            audience: "IssuerPhotex",
+                                            claims: claimsIdentity.Claims,
+                                            expires: DateTime.Now.AddMinutes(30),
+                                            signingCredentials: creds);
 
-                return NoContent();
+                var handler = new JwtSecurityTokenHandler();
+                return Ok(new
+                {
+                    token = handler.WriteToken(token)
+                });
             }
 
             return BadRequest("Unknown user");
