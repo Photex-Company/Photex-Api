@@ -28,7 +28,8 @@ namespace Photex.Core.Services
                 {
                     Id = x.Id,
                     Name = x.Name,
-                    Image = x.Images.FirstOrDefault()
+                    Image = x.Images.FirstOrDefault(),
+                    LastModified = x.Images.Max(i => i.DateModified)
                 })
                 .ToListAsync();
 
@@ -36,7 +37,8 @@ namespace Photex.Core.Services
             {
                 Id = x.Id,
                 Name = x.Name,
-                CoverImageUrl = x.Image?.Url
+                CoverImageUrl = x.Image?.Url,
+                LastModified = x.LastModified
             });
         }
 
